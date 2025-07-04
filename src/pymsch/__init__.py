@@ -1,36 +1,52 @@
-import struct, zlib, os, base64, pyperclip, math
+from __future__ import annotations
+
+import base64
+import struct
+import zlib
 from enum import Enum
+from typing import Iterable, Literal, overload
+
+import pyperclip
+
 
 class Block:
-    def __init__(self, block, x, y, config, rotation):
+    def __init__(self, block: Content, x: int, y: int, config: _ByteObject, rotation: int):
+        if not isinstance(block.value, ContentBlock):
+            raise ValueError(
+                f"Invalid block type (expected {ContentTypes.BLOCK} but got {block.value.type}): {block}"
+            )
         self.block = block
         self.x = x 
         self.y = y 
         self.config = config 
         self.rotation = rotation
 
+    @property
+    def value(self) -> ContentBlock:
+        """Equivalent to `self.block.value`, but correctly typed."""
+        assert isinstance(self.block.value, ContentBlock)
+        return self.block.value
+
     def get_block_name(self):
         return(self.block.name.lower().replace("_", "-"))
 
-    def set_config(self, config):
+    def set_config(self, config: _ByteObject):
         self.config = config
 
     def __repr__(self):
         return(f"{self.get_block_name()}({self.x}, {self.y})")
 
-class Schematic:
-    pass
 
 class Schematic:
 
     def __init__(self):
-        self.tiles = []
+        self.tiles = list[Block]()
         self.tags = {"name": "unnamed"}
-        self.labels = []
-        self._filled_list = []
+        self.labels = list[str]()
+        self._filled_list = list[tuple[int, int]]()
 
     def __repr__(self):
-        return f"Schematic '{self.tags["name"]}' with {len(self.tiles)} blocks"
+        return f"Schematic '{self.tags['name']}' with {len(self.tiles)} blocks"
 
     def copy(self):
         a = Schematic()
@@ -41,7 +57,7 @@ class Schematic:
         return(a)
 
     def add_block(self, tile: Block, do_collision: bool = True):
-        if(self._test_block_collision(tile) == False or do_collision == False):
+        if not (self._test_block_collision(tile) and do_collision):
             self.tiles.append(tile)
             self._add_block_collision(tile)
             return(tile)
@@ -50,23 +66,24 @@ class Schematic:
 
     def add_schem(self, schem: Schematic, x: int, y: int):
 
-        width, height, offset_x, offset_y = schem.get_dimensions(offsets = True)
+        _, _, offset_x, offset_y = schem.get_dimensions(offsets = True)
 
         for tile in schem.tiles:
             self.add_block(Block(tile.block, tile.x + x + offset_x, tile.y + y + offset_y, tile.config, tile.rotation))
 
-    def _read(data: bytearray):
+    @classmethod
+    def _read(cls, data: bytes | bytearray):
         self = Schematic()
         if data[:4] != b"msch":
             raise Exception("Invalid msch data")
         data = data[5:]
         data = bytearray(zlib.decompress(data))
         
-        width = _ByteUtils.pop_int(data, 2)
-        height = _ByteUtils.pop_int(data, 2)
+        _ByteUtils.pop_int(data, 2) # width
+        _ByteUtils.pop_int(data, 2) # height
 
         tag_count = _ByteUtils.pop_int(data, 1)
-        for i in range(tag_count):
+        for _ in range(tag_count):
             tag = _ByteUtils.pop_UTF(data)
             value = _ByteUtils.pop_UTF(data)
             self.tags[tag] = value
@@ -76,13 +93,13 @@ class Schematic:
             self.labels = labels[1:-1].split(",")
             
 
-        types = []
+        types = list[str]()
         type_count = _ByteUtils.pop_int(data, 1)
-        for i in range(type_count):
+        for _ in range(type_count):
             types.append(_ByteUtils.pop_UTF(data))
 
         block_count = _ByteUtils.pop_int(data, 4)
-        for i in range(block_count):
+        for _ in range(block_count):
             block_index = _ByteUtils.pop_int(data, 1)
             block_x = _ByteUtils.pop_int(data, 2)
             block_y = _ByteUtils.pop_int(data, 2)
@@ -93,10 +110,12 @@ class Schematic:
 
         return(self)
 
-    def read_str(string: str):
+    @classmethod
+    def read_str(cls, string: str):
         return Schematic._read(base64.standard_b64decode(bytearray(string, "utf8")))
 
-    def read_file(file_path: str):
+    @classmethod
+    def read_file(cls, file_path: str):
         with open(file_path, "rb") as file:
             data = bytearray(file.read())
             return Schematic._read(data)
@@ -105,7 +124,7 @@ class Schematic:
 
         schem = self.copy()
 
-        types_list = []
+        types_list = list[str]()
         for tile in schem.tiles:
             if(tile.get_block_name() not in types_list):
                 types_list.append(tile.get_block_name())
@@ -165,57 +184,65 @@ class Schematic:
         self.labels.append(label)
 
     def _add_block_collision(self, block: Block):
-        smallest_x = block.x - ((block.block.value.size - 1) // 2)
-        smallest_y = block.y - ((block.block.value.size - 1) // 2)
+        smallest_x = block.x - ((block.value.size - 1) // 2)
+        smallest_y = block.y - ((block.value.size - 1) // 2)
 
-        for x in range(smallest_x, smallest_x + block.block.value.size, 1):
-            for y in range(smallest_y, smallest_y + block.block.value.size, 1):
+        for x in range(smallest_x, smallest_x + block.value.size, 1):
+            for y in range(smallest_y, smallest_y + block.value.size, 1):
                 if((x, y) not in self._filled_list):
                     self._filled_list.append((x, y))
 
     def _test_block_collision(self, block: Block):
-        smallest_x = block.x - ((block.block.value.size - 1) // 2)
-        smallest_y = block.y - ((block.block.value.size - 1) // 2)
+        smallest_x = block.x - ((block.value.size - 1) // 2)
+        smallest_y = block.y - ((block.value.size - 1) // 2)
 
-        for x in range(smallest_x, smallest_x + block.block.value.size, 1):
-            for y in range(smallest_y, smallest_y + block.block.value.size, 1):
+        for x in range(smallest_x, smallest_x + block.value.size, 1):
+            for y in range(smallest_y, smallest_y + block.value.size, 1):
                 if((x, y) in self._filled_list):
                     return(True)
         return(False)
 
     def get_block(self, x: int, y: int):
         for block in self.tiles:
-            smallest_x = block.x - ((block.block.value.size - 1) // 2)
-            smallest_y = block.y - ((block.block.value.size - 1) // 2)
-            if(x >= smallest_x and x < smallest_x + block.block.value.size and y >= smallest_y and y < smallest_y + block.block.value.size):
+            smallest_x = block.x - ((block.value.size - 1) // 2)
+            smallest_y = block.y - ((block.value.size - 1) // 2)
+            if(x >= smallest_x and x < smallest_x + block.value.size and y >= smallest_y and y < smallest_y + block.value.size):
                 return(block)
         return(None)
 
-    def get_dimensions(self, offsets = False):
+    @overload
+    def get_dimensions(self, offsets: Literal[True]) -> tuple[int, int, int, int]:
+        """Returns: width, height, offset_x, offset_y"""
+
+    @overload
+    def get_dimensions(self, offsets: Literal[False] = False) -> tuple[int, int]:
+        """Returns: width, height"""
+
+    def get_dimensions(self, offsets: bool = False):
 
         if(len(self.tiles) == 0):
-            if(offsets == False):
+            if not offsets:
                 return(0, 0)
             else:
                 return(0, 0, 0, 0)
 
         b = self.tiles[0]
 
-        width = b.x - ((b.block.value.size - 1) // 2)
-        height = b.y - ((b.block.value.size - 1) // 2)
-        offset_x = b.x + (b.block.value.size // 2) + 1
-        offset_y = b.y + (b.block.value.size // 2) + 1
+        width = b.x - ((b.value.size - 1) // 2)
+        height = b.y - ((b.value.size - 1) // 2)
+        offset_x = b.x + (b.value.size // 2) + 1
+        offset_y = b.y + (b.value.size // 2) + 1
 
         for block in self.tiles:
-            offset_x = min(offset_x, block.x - ((block.block.value.size - 1) // 2))
-            offset_y = min(offset_y, block.y - ((block.block.value.size - 1) // 2))
-            width = max(width, block.x + (block.block.value.size // 2) + 1)
-            height = max(height, block.y + (block.block.value.size // 2) + 1)
+            offset_x = min(offset_x, block.x - ((block.value.size - 1) // 2))
+            offset_y = min(offset_y, block.y - ((block.value.size - 1) // 2))
+            width = max(width, block.x + (block.value.size // 2) + 1)
+            height = max(height, block.y + (block.value.size // 2) + 1)
         offset_x *= -1
         offset_y *= -1
         width += offset_x
         height += offset_y
-        if(offsets == False):
+        if not offsets:
             return(width, height)
         else:
             return(width, height, offset_x, offset_y)
@@ -241,7 +268,7 @@ class ContentTypes(Enum):
     UNIT_STANCE = 17
 
 class ContentType:
-    def __init__(self, type: int, id: int):
+    def __init__(self, type: ContentTypes, id: int):
         self.type = type
         self.id = id
 
@@ -764,12 +791,12 @@ class Content(Enum):
     CYANOGEN = ContentType(ContentTypes.LIQUID, 10)
 
 class ContentLists:
-        BLOCKS = []
-        ITEMS = []
-        UNITS = []
-        LIQUIDS = []
+        BLOCKS = list[Content]()
+        ITEMS = list[Content]()
+        UNITS = list[Content]()
+        LIQUIDS = list[Content]()
 
-        REVERSE_LOOKUP = {}
+        REVERSE_LOOKUP = dict[int, dict[int, Content]]()
 
         for t in ContentTypes:
             REVERSE_LOOKUP[t.value] = {}
@@ -794,19 +821,19 @@ class long(int):
     pass
 
 class Point:
-    def __init__(self, x: float, y: float):
+    def __init__(self, x: int, y: int):
         self.x = x
         self.y = y
 
 class PointArray:
-    def __init__(self, array = []):
-        self.array = []
+    def __init__(self, array: Iterable[Point] = []):
+        self.array = list[Point]()
         a = 0
         for i in array:
             self.insert(a, i)
             a += 1
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int):
         return(self.array[index])
 
     def __setitem__(self, index: int, value: Point):
@@ -821,11 +848,11 @@ class PointArray:
     def __len__(self):
         return(len(self.array))
 
-    def append(self, item):
+    def append(self, item: Point):
         self.array.append(item)
 
 class ProcessorConfig:
-    def __init__(self, code: str, links: list):
+    def __init__(self, code: str, links: list[ProcessorLink]):
         self.code = code
         self.links = links
 
@@ -844,7 +871,8 @@ class ProcessorConfig:
 
         return(bytearray(zlib.compress(buffer.data)))
 
-    def decompress(data):
+    @classmethod
+    def decompress(cls, data: bytes | bytearray):
         self = ProcessorConfig("", [])
         data = bytearray(zlib.decompress(data))
         _ByteUtils.pop_bytes(data, 1)
@@ -852,7 +880,7 @@ class ProcessorConfig:
         self.code = str(_ByteUtils.pop_bytes(data, code_len), "ascii")
 
         link_len = _ByteUtils.pop_int(data, 4)
-        for i in range(link_len):
+        for _ in range(link_len):
             link_name = _ByteUtils.pop_UTF(data)
             link_x = _ByteUtils.pop_int(data, 2, signed=True)
             link_y = _ByteUtils.pop_int(data, 2, signed=True)
@@ -869,13 +897,29 @@ class ProcessorConfig:
         return(f"ProcessorConfig(code = \"{print_code}\", links = {self.links})")
 
 class ProcessorLink:
-    def __init__(self, x, y, name):
+    def __init__(self, x: int, y: int, name: str):
         self.x = x
         self.y = y
         self.name = name
 
     def __repr__(self):
         return(f"ProcessorLink(pos = ({self.x}, {self.y}), name = \"{self.name}\")")
+
+_ByteObject = (
+    int
+    | long
+    | float
+    | str
+    | Content
+    | Point
+    | PointArray
+    | bool
+    | double
+    | bytearray
+    | ProcessorConfig
+    | list["_ByteObject"]
+    | None
+)
 
 class _ByteBuffer():
     def __init__(self):
@@ -920,13 +964,13 @@ class _ByteBuffer():
     def writeBool(self, var: bool):
         self.data += struct.pack("?", var)
 
-    def writeObject(self, obj):
+    def writeObject(self, obj: _ByteObject):
         if(obj is None):
             self.writeByte(0)
         elif(type(obj) is int):
             self.writeByte(1)
             self.writeInt(obj)
-        elif(type(obj).__name__ == 'long'):
+        elif(type(obj) is long):
             self.writeByte(2)
             self.writeLong(obj)
         elif(type(obj) is float):
@@ -935,17 +979,17 @@ class _ByteBuffer():
         elif(type(obj) is str):
             self.writeByte(4)
             self.writeString(obj)
-        elif(type(obj).__name__ == 'Content'):
+        elif(type(obj) is Content):
             self.writeByte(5)
             self.writeByte(obj.value.type.value)
             self.writeUShort(obj.value.id)
         #elif(type(obj) is str): #intSeq
         #    self.writeByte(6)
-        elif(type(obj).__name__ == 'Point'):
+        elif(type(obj) is Point):
             self.writeByte(7)
             self.writeInt(obj.x)
             self.writeInt(obj.y)
-        elif(type(obj).__name__ == 'PointArray'): #point list
+        elif(type(obj) is PointArray): #point list
             self.writeByte(8)
             self.writeByte(len(obj))
             for point in obj:
@@ -953,10 +997,10 @@ class _ByteBuffer():
                 self.writeShort(point.y)
         #elif(type(obj) is str): #tech node
         #    self.writeByte(9)
-        elif(type(obj).__name__ == 'bool'):
+        elif(type(obj) is bool):
             self.writeByte(10)
             self.writeBool(obj)
-        elif(type(obj).__name__ == 'double'):
+        elif(type(obj) is double):
             self.writeByte(11)
             self.writeDouble(obj)
         #elif(type(obj) is str): #Building
@@ -970,7 +1014,7 @@ class _ByteBuffer():
             self.writeInt(len(obj))
             for b in obj:
                 self.writeUByte(b)
-        elif(type(obj).__name__ == "ProcessorConfig"): #Byte array
+        elif(type(obj) is ProcessorConfig): #Byte array
             self.writeByte(14)
             data = obj.compress()
             self.writeInt(len(data))
@@ -1004,29 +1048,40 @@ class _ByteBuffer():
            print("Unknown object type")
 
 class _ByteUtils:
+    @staticmethod
     def pop_bytes(data: bytearray, byte_count: int):
         out_bytes = bytearray()
-        for i in range(byte_count):
+        for _ in range(byte_count):
             out_bytes.append(data.pop(0))
         return(out_bytes)
 
-    def pop_int(data: bytearray, byte_count: int, signed=False):
-        return(int.from_bytes(_ByteUtils.pop_bytes(data, byte_count), signed=signed))
+    @staticmethod
+    def pop_int(data: bytearray, byte_count: int, signed: bool = False):
+        return int.from_bytes(
+            _ByteUtils.pop_bytes(data, byte_count),
+            byteorder="big",
+            signed=signed,
+        )
 
-    def pop_float(data: bytearray):
-        return(struct.unpack('f', _ByteUtils.pop_bytes(data, 4)))
+    @staticmethod
+    def pop_float(data: bytearray) -> float:
+        return struct.unpack('f', _ByteUtils.pop_bytes(data, 4))[0]
 
-    def pop_double(data: bytearray):
-        return(struct.unpack('d', _ByteUtils.pop_bytes(data, 8)))
+    @staticmethod
+    def pop_double(data: bytearray) -> double:
+        return double(struct.unpack('d', _ByteUtils.pop_bytes(data, 8))[0])
 
-    def pop_bool(data: bytearray):
-        return(struct.unpack('?', _ByteUtils.pop_bytes(data, 1)))
+    @staticmethod
+    def pop_bool(data: bytearray) -> bool:
+        return struct.unpack('?', _ByteUtils.pop_bytes(data, 1))[0]
 
+    @staticmethod
     def pop_UTF(data: bytearray):
         char_count = _ByteUtils.pop_int(data, 2)
         return str(_ByteUtils.pop_bytes(data, char_count), "UTF")
 
-    def pop_object(data: bytearray):
+    @staticmethod
+    def pop_object(data: bytearray) -> _ByteObject:
         obj_type = _ByteUtils.pop_int(data, 1)
         match obj_type:
             case 0: #null
@@ -1046,7 +1101,7 @@ class _ByteUtils:
             case 5: #content
                 type_id = _ByteUtils.pop_int(data, 1)
                 content_id = _ByteUtils.pop_int(data, 2)
-                return ContentLists.REVERSE_LOOKUP[type_id.value][content_id]
+                return ContentLists.REVERSE_LOOKUP[type_id][content_id]
             case 7: #point
                 x = _ByteUtils.pop_int(data, 4, signed=True)
                 y = _ByteUtils.pop_int(data, 4, signed=True)
@@ -1054,10 +1109,11 @@ class _ByteUtils:
             case 8:
                 out_arr = PointArray()
                 arr_len = _ByteUtils.pop_int(data, 1)
-                for i in range(arr_len):
+                for _ in range(arr_len):
                     x = _ByteUtils.pop_int(data, 2, signed=True)
                     y = _ByteUtils.pop_int(data, 2, signed=True)
                     out_arr.append(Point(x, y))
+                return out_arr
             case 10: #bool
                 return _ByteUtils.pop_bool(data)
             case 11: #double
@@ -1066,9 +1122,10 @@ class _ByteUtils:
                 arr_len = _ByteUtils.pop_int(data, 4)
                 return _ByteUtils.pop_bytes(data, arr_len)
             case 22: #object array
-                out_list = []
+                out_list = list[_ByteObject]()
                 arr_len = _ByteUtils.pop_int(data, 4)
-                for i in range(arr_len):
+                for _ in range(arr_len):
                     out_list.append(_ByteUtils.pop_object(data))
+                return out_list
             case _:
                 raise Exception(f"Unknown object type {obj_type}")

@@ -1,18 +1,89 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "pymsch"
 version = "0.0.11"
 authors = [
-  {name="skyethefoxyfox"},
+    {name="skyethefoxyfox"},
 ]
 description = "A package for creating mindustry schematic files"
 readme = "README.md"
-requires-python = ">= 3.8"
+requires-python = ">= 3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+dependencies = [
+    "pyperclip",
+]
 
-[build-system]
-requires = ["hatchling", "pyperclip"]
-build-backend = "hatchling.build"
+[dependency-groups]
+build = [
+    "build",
+]
+test = [
+    "pytest~=8.4.1",
+]
+
+[project.urls]
+Source = "https://github.com/SkyeTheFoxyFox/pymsch"
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+addopts = ["--import-mode=importlib"]
+
+[tool.pyright]
+pythonVersion = "3.10"
+pythonPlatform = "All"
+
+typeCheckingMode = "basic"
+
+strictDictionaryInference = true
+strictListInference = true
+strictSetInference = true
+
+reportAssertAlwaysTrue = "error"
+reportConstantRedefinition = "error"
+reportDeprecated = "error"
+reportFunctionMemberAccess = "error"
+reportIncompatibleMethodOverride = "error"
+reportIncompatibleVariableOverride = "error"
+reportIncompleteStub = "error"
+reportInconsistentConstructor = "error"
+reportInvalidStringEscapeSequence = "error"
+reportInvalidStubStatement = "error"
+reportInvalidTypeVarUse = "error"
+reportMatchNotExhaustive = "error"
+reportMissingParameterType = "error"
+reportOverlappingOverload = "error"
+reportSelfClsParameterName = "error"
+reportTypeCommentUsage = "error"
+reportUnknownParameterType = "error"
+reportUnnecessaryCast = "error"
+reportUnnecessaryContains = "error"
+reportUnsupportedDunderAll = "error"
+reportUntypedBaseClass = "error"
+reportUntypedClassDecorator = "error"
+reportUntypedFunctionDecorator = "error"
+reportUntypedNamedTuple = "error"
+reportWildcardImportFromLibrary = "error"
+
+reportDuplicateImport = "warning"
+reportMissingTypeArgument = "warning"
+reportPrivateUsage = "warning"
+reportUnknownArgumentType = "warning"
+reportUnknownLambdaType = "warning"
+reportUnknownMemberType = "warning"
+reportUnknownVariableType = "warning"
+reportUnnecessaryComparison = "warning"
+reportUnnecessaryIsInstance = "warning"
+reportUnusedClass = "warning"
+reportUnusedExpression = "warning"
+reportUnusedFunction = "warning"
+reportUnusedImport = "warning"
+reportUnusedVariable = "warning"
+
+reportMissingTypeStubs = "none"
