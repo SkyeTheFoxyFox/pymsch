@@ -6,7 +6,7 @@ import zlib
 import csv
 from pathlib import Path
 from enum import Enum
-from typing import Iterable, Literal, overload
+from typing import Iterable, Literal, overload, TYPE_CHECKING, Any
 
 import pyperclip
 
@@ -314,7 +314,11 @@ def _define_content(mimex_data_path):
 
     return content_dict
 
-Content = Enum("Content", _define_content(Path(__file__).parent/"mimex-data/data/be"))
+if TYPE_CHECKING:
+    class Content(Any):
+        pass
+else:
+    Content = Enum("Content", _define_content(Path(__file__).parent/"mimex-data/data/be"))
 
 class ContentLists:
     BLOCKS = list[Content]()
