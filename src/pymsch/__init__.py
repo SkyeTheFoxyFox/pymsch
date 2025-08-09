@@ -314,7 +314,7 @@ def _define_content(mimex_data_path):
 
     return content_dict
 
-Content = Enum("Content", _define_content(Path(__file__).parent.parent.parent/"mimex-data/data/be"))
+Content = Enum("Content", _define_content(Path(__file__).parent/"mimex-data/data/be"))
 
 class ContentLists:
     BLOCKS = list[Content]()
