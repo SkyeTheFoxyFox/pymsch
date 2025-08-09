@@ -1,0 +1,3 @@
+[submodule "mimex-data"]
+	path = mimex-data
+	url = https://github.com/cardillan/mimex-data
